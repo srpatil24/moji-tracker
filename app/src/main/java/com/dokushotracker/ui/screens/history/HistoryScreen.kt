@@ -13,14 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -28,6 +27,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -85,6 +85,7 @@ fun HistoryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp),
         ) {
             OutlinedTextField(
@@ -95,17 +96,11 @@ fun HistoryScreen(
                 onValueChange = viewModel::onSearchQueryChanged,
                 label = { Text("Search") },
             )
-            LazyRow(
-                modifier = Modifier.padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(SortOption.entries) { sort ->
-                    AssistChip(
-                        onClick = { viewModel.onSortChanged(sort) },
-                        label = { Text(sort.displayName) },
-                    )
-                }
-            }
+
+            SortButtonsRow(
+                current = state.sortOption,
+                onSortChanged = viewModel::onSortChanged,
+            )
 
             if (state.entries.isEmpty()) {
                 EmptyState(
@@ -150,6 +145,57 @@ fun HistoryScreen(
             onDismiss = viewModel::dismissEditSheet,
             onSave = viewModel::saveEdit,
         )
+    }
+}
+
+@Composable
+private fun SortButtonsRow(
+    current: SortOption,
+    onSortChanged: (SortOption) -> Unit,
+) {
+    val currentGroup = current.toSortGroup()
+    val currentDescending = current.isDescending()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SortGroup.entries.forEach { group ->
+            val isActive = currentGroup == group
+            val label = buildString {
+                append(group.label)
+                if (isActive) {
+                    append(if (currentDescending) " ▼" else " ▲")
+                }
+            }
+
+            val onClick = {
+                val newSort = if (isActive) {
+                    group.toSortOption(descending = !currentDescending)
+                } else {
+                    group.toSortOption(descending = true)
+                }
+                onSortChanged(newSort)
+            }
+
+            if (isActive) {
+                FilledTonalButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onClick,
+                ) {
+                    Text(label)
+                }
+            } else {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onClick,
+                ) {
+                    Text(group.label)
+                }
+            }
+        }
     }
 }
 
@@ -319,4 +365,42 @@ private fun EditEntryDialog(
             DatePicker(state = pickerState)
         }
     }
+}
+
+private enum class SortGroup(val label: String) {
+    DATE("Date"),
+    MOJI("文字"),
+    TITLE("Title"),
+}
+
+private fun SortOption.toSortGroup(): SortGroup = when (this) {
+    SortOption.DATE_DESC,
+    SortOption.DATE_ASC,
+    -> SortGroup.DATE
+
+    SortOption.MOJI_DESC,
+    SortOption.MOJI_ASC,
+    -> SortGroup.MOJI
+
+    SortOption.TITLE_ASC,
+    SortOption.TITLE_DESC,
+    -> SortGroup.TITLE
+}
+
+private fun SortOption.isDescending(): Boolean = when (this) {
+    SortOption.DATE_DESC,
+    SortOption.MOJI_DESC,
+    SortOption.TITLE_DESC,
+    -> true
+
+    SortOption.DATE_ASC,
+    SortOption.MOJI_ASC,
+    SortOption.TITLE_ASC,
+    -> false
+}
+
+private fun SortGroup.toSortOption(descending: Boolean): SortOption = when (this) {
+    SortGroup.DATE -> if (descending) SortOption.DATE_DESC else SortOption.DATE_ASC
+    SortGroup.MOJI -> if (descending) SortOption.MOJI_DESC else SortOption.MOJI_ASC
+    SortGroup.TITLE -> if (descending) SortOption.TITLE_DESC else SortOption.TITLE_ASC
 }

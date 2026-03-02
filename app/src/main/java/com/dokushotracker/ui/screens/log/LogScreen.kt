@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +23,9 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
@@ -30,6 +34,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -46,10 +52,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokushotracker.data.model.MediaType
 import com.dokushotracker.util.DateUtils
 import com.dokushotracker.util.NumberFormatUtils
-import kotlinx.coroutines.flow.collectLatest
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -58,8 +64,8 @@ fun LogScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showSeriesSuggestions by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var seriesMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.snackbarEvents.collectLatest { event ->
@@ -89,6 +95,7 @@ fun LogScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .verticalScroll(rememberScrollState())
                 .imePadding(),
@@ -111,51 +118,71 @@ fun LogScreen(
                 Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
             }
 
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            Text(text = "Entry Kind", style = MaterialTheme.typography.titleSmall)
+            TabRow(selectedTabIndex = if (state.isSeries) 1 else 0) {
+                Tab(
                     selected = !state.isSeries,
                     onClick = { viewModel.onSeriesToggled(false) },
-                    label = { Text("Standalone") },
+                    text = { Text("Standalone") },
                 )
-                FilterChip(
+                Tab(
                     selected = state.isSeries,
                     onClick = { viewModel.onSeriesToggled(true) },
-                    label = { Text("Series") },
+                    text = { Text("Series") },
                 )
-            }
-
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = state.title,
-                onValueChange = {
-                    viewModel.onTitleChanged(it)
-                    showSeriesSuggestions = true
-                },
-                label = { Text(if (state.isSeries) "Series Title" else "Title") },
-                isError = state.validationErrors.containsKey("title"),
-                supportingText = {
-                    state.validationErrors["title"]?.let { Text(it) }
-                },
-            )
-
-            if (state.isSeries && showSeriesSuggestions) {
-                val filtered = state.seriesTitles.filter {
-                    it.contains(state.title, ignoreCase = true) && state.title.isNotBlank()
-                }.take(4)
-                filtered.forEach { seriesTitle ->
-                    TextButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            viewModel.onTitleChanged(seriesTitle)
-                            showSeriesSuggestions = false
-                        },
-                    ) {
-                        Text(seriesTitle)
-                    }
-                }
             }
 
             if (state.isSeries) {
+                val filteredSeries = remember(state.seriesTitles, state.title) {
+                    state.seriesTitles
+                        .filter { it.contains(state.title.trim(), ignoreCase = true) || state.title.isBlank() }
+                        .take(8)
+                }
+                ExposedDropdownMenuBox(
+                    expanded = seriesMenuExpanded,
+                    onExpandedChange = { seriesMenuExpanded = !seriesMenuExpanded },
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        value = state.title,
+                        onValueChange = {
+                            viewModel.onTitleChanged(it)
+                            seriesMenuExpanded = true
+                        },
+                        label = { Text("Series Title") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = seriesMenuExpanded)
+                        },
+                        isError = state.validationErrors.containsKey("title"),
+                        supportingText = {
+                            state.validationErrors["title"]?.let { Text(it) }
+                        },
+                    )
+                    ExposedDropdownMenu(
+                        expanded = seriesMenuExpanded,
+                        onDismissRequest = { seriesMenuExpanded = false },
+                    ) {
+                        filteredSeries.forEach { seriesTitle ->
+                            DropdownMenuItem(
+                                text = { Text(seriesTitle) },
+                                onClick = {
+                                    viewModel.onTitleChanged(seriesTitle)
+                                    seriesMenuExpanded = false
+                                },
+                            )
+                        }
+                        val typedTitle = state.title.trim()
+                        if (typedTitle.isNotBlank() && filteredSeries.none { it.equals(typedTitle, ignoreCase = true) }) {
+                            DropdownMenuItem(
+                                text = { Text("Add new series \"$typedTitle\"") },
+                                onClick = { seriesMenuExpanded = false },
+                            )
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
                     value = state.seriesNumber,
@@ -170,6 +197,17 @@ fun LogScreen(
                         } else if (state.suggestedSeriesNumber != null && state.seriesNumber.isBlank()) {
                             Text("Suggested: ${state.suggestedSeriesNumber}")
                         }
+                    },
+                )
+            } else {
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = state.title,
+                    onValueChange = viewModel::onTitleChanged,
+                    label = { Text("Title") },
+                    isError = state.validationErrors.containsKey("title"),
+                    supportingText = {
+                        state.validationErrors["title"]?.let { Text(it) }
                     },
                 )
             }

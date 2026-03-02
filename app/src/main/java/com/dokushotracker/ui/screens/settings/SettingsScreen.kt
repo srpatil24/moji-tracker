@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package com.dokushotracker.ui.screens.settings
 
@@ -7,26 +10,35 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,12 +52,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokushotracker.data.model.GoalType
 import com.dokushotracker.data.model.MediaType
 import com.dokushotracker.domain.model.AppSettings
+import com.dokushotracker.domain.model.ReadingGoal
 import com.dokushotracker.domain.model.ThemeMode
-import com.dokushotracker.domain.model.UiLanguage
 import com.dokushotracker.ui.components.ConfirmationDialog
+import com.dokushotracker.util.DateUtils
 import com.dokushotracker.util.NumberFormatUtils
-import kotlinx.coroutines.flow.collectLatest
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun SettingsScreen(
@@ -107,14 +122,13 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             GoalSection(
-                currentGoalText = state.activeGoal?.let {
-                    "Read ${NumberFormatUtils.formatLong(it.targetValue)} ${it.goalType.name.lowercase()}"
-                } ?: "No active goal",
+                activeGoal = state.activeGoal,
                 onSetGoal = { showGoalDialog = true },
                 onClearGoal = viewModel::clearGoal,
             )
@@ -128,7 +142,6 @@ fun SettingsScreen(
             AppearanceSection(
                 appSettings = appSettings,
                 onThemeChanged = viewModel::setThemeMode,
-                onLanguageChanged = viewModel::setLanguage,
             )
 
             DataManagementSection(
@@ -141,6 +154,7 @@ fun SettingsScreen(
 
     if (showGoalDialog) {
         GoalDialog(
+            initialGoal = state.activeGoal,
             onDismiss = { showGoalDialog = false },
             onSave = { goalType, target, startDate, endDate ->
                 viewModel.saveGoal(goalType, target, startDate, endDate)
@@ -218,16 +232,53 @@ fun SettingsScreen(
 
 @Composable
 private fun GoalSection(
-    currentGoalText: String,
+    activeGoal: ReadingGoal?,
     onSetGoal: () -> Unit,
     onClearGoal: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (activeGoal != null) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Reading Goal", style = MaterialTheme.typography.titleMedium)
-            Text(currentGoalText, style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = onSetGoal) { Text("Set / Change Goal") }
-            TextButton(onClick = onClearGoal) { Text("Clear Goal") }
+
+            if (activeGoal == null) {
+                Text("No active goal. Set one to keep your progress focused.")
+                FilledTonalButton(onClick = onSetGoal) {
+                    Text("Set Goal")
+                }
+            } else {
+                val unit = if (activeGoal.goalType == GoalType.MOJI) "文字" else "books"
+                Text(
+                    text = "Target: ${NumberFormatUtils.formatLong(activeGoal.targetValue)} $unit",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = "Start: ${DateUtils.formatDate(activeGoal.startDate)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                activeGoal.endDate?.let { endDate ->
+                    Text(
+                        text = "Deadline: ${DateUtils.formatDate(endDate)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = onSetGoal) {
+                        Text("Change Goal")
+                    }
+                    OutlinedButton(onClick = onClearGoal) {
+                        Text("Clear")
+                    }
+                }
+            }
         }
     }
 }
@@ -247,7 +298,7 @@ private fun DefaultsSection(
                 onValueChange = { defaultMojiText = it.filter(Char::isDigit) },
                 label = { Text("Default 文字数") },
             )
-            Button(
+            FilledTonalButton(
                 onClick = { defaultMojiText.toLongOrNull()?.let(onDefaultMojiChanged) },
             ) {
                 Text("Save Default")
@@ -263,7 +314,7 @@ private fun DefaultsSection(
                     FilterChip(
                         selected = settings.defaultMediaType == mediaType,
                         onClick = { onDefaultMediaTypeChanged(mediaType) },
-                        label = { Text(mediaType.name) },
+                        label = { Text(mediaType.displayName) },
                     )
                 }
             }
@@ -275,7 +326,6 @@ private fun DefaultsSection(
 private fun AppearanceSection(
     appSettings: AppSettings,
     onThemeChanged: (ThemeMode) -> Unit,
-    onLanguageChanged: (UiLanguage) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -290,17 +340,6 @@ private fun AppearanceSection(
                         selected = appSettings.themeMode == mode,
                         onClick = { onThemeChanged(mode) },
                         label = { Text(mode.name) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("Language")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                UiLanguage.entries.forEach { lang ->
-                    FilterChip(
-                        selected = appSettings.language == lang,
-                        onClick = { onLanguageChanged(lang) },
-                        label = { Text(lang.name) },
                     )
                 }
             }
@@ -332,13 +371,17 @@ private fun DataManagementSection(
 
 @Composable
 private fun GoalDialog(
+    initialGoal: ReadingGoal?,
     onDismiss: () -> Unit,
     onSave: (GoalType, Long, LocalDate, LocalDate?) -> Unit,
 ) {
-    var goalType by remember { mutableStateOf(GoalType.MOJI) }
-    var target by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf(LocalDate.now()) }
-    var endDateText by remember { mutableStateOf("") }
+    var goalType by remember(initialGoal) { mutableStateOf(initialGoal?.goalType ?: GoalType.MOJI) }
+    var target by remember(initialGoal) { mutableStateOf(initialGoal?.targetValue?.toString().orEmpty()) }
+    var startDate by remember(initialGoal) { mutableStateOf(initialGoal?.startDate ?: LocalDate.now()) }
+    var endDate by remember(initialGoal) { mutableStateOf(initialGoal?.endDate) }
+
+    var pickingStartDate by remember { mutableStateOf(false) }
+    var pickingEndDate by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -350,7 +393,7 @@ private fun GoalDialog(
                         FilterChip(
                             selected = goalType == type,
                             onClick = { goalType = type },
-                            label = { Text(type.name) },
+                            label = { Text(type.displayName) },
                         )
                     }
                 }
@@ -359,27 +402,38 @@ private fun GoalDialog(
                     onValueChange = { target = it.filter(Char::isDigit) },
                     label = { Text("Target value") },
                 )
-                OutlinedTextField(
-                    value = startDate.toString(),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Start date") },
-                )
-                OutlinedTextField(
-                    value = endDateText,
-                    onValueChange = { endDateText = it },
-                    label = { Text("End date (YYYY-MM-DD, optional)") },
-                )
+
+                FilledTonalButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { pickingStartDate = true },
+                ) {
+                    androidx.compose.material3.Icon(Icons.Filled.DateRange, contentDescription = null)
+                    Text("Start: ${DateUtils.formatDate(startDate)}", modifier = Modifier.padding(start = 8.dp))
+                }
+
+                FilledTonalButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { pickingEndDate = true },
+                ) {
+                    androidx.compose.material3.Icon(Icons.Filled.DateRange, contentDescription = null)
+                    Text(
+                        text = "End: ${endDate?.let(DateUtils::formatDate) ?: "None"}",
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+
+                if (endDate != null) {
+                    TextButton(onClick = { endDate = null }) {
+                        Text("Clear end date")
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     val parsedTarget = target.toLongOrNull() ?: return@TextButton
-                    val parsedEndDate = endDateText.trim().takeIf { it.isNotBlank() }?.let {
-                        runCatching { LocalDate.parse(it) }.getOrNull()
-                    }
-                    onSave(goalType, parsedTarget, startDate, parsedEndDate)
+                    onSave(goalType, parsedTarget, startDate, endDate)
                 },
             ) {
                 Text("Save")
@@ -391,4 +445,64 @@ private fun GoalDialog(
             }
         },
     )
+
+    if (pickingStartDate) {
+        GoalDatePickerDialog(
+            initialDate = startDate,
+            onDismiss = { pickingStartDate = false },
+            onDateSelected = {
+                startDate = it
+                if (endDate != null && endDate!!.isBefore(startDate)) {
+                    endDate = startDate
+                }
+                pickingStartDate = false
+            },
+        )
+    }
+
+    if (pickingEndDate) {
+        GoalDatePickerDialog(
+            initialDate = endDate ?: startDate,
+            onDismiss = { pickingEndDate = false },
+            onDateSelected = {
+                endDate = it
+                pickingEndDate = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun GoalDatePickerDialog(
+    initialDate: LocalDate,
+    onDismiss: () -> Unit,
+    onDateSelected: (LocalDate) -> Unit,
+) {
+    val initialMillis = remember(initialDate) {
+        initialDate.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
+    }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        onDateSelected(selected)
+                    }
+                },
+            ) {
+                Text("Done")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    ) {
+        DatePicker(state = datePickerState)
+    }
 }
