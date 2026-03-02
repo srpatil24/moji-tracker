@@ -22,7 +22,7 @@ class UpdateEntryUseCase @Inject constructor(
         if (entry.isSeries && (entry.seriesNumber == null || entry.seriesNumber <= 0)) {
             return "Series number must be positive"
         }
-        if (entry.mojiCount <= 0L) return "Moji count must be greater than 0"
+        if (entry.mojiCount <= 0L) return "文字数 must be greater than 0"
         if (entry.dateFinished.isAfter(LocalDate.now())) return "Date cannot be in the future"
         return null
     }

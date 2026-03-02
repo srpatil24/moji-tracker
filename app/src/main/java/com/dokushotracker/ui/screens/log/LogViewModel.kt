@@ -148,7 +148,7 @@ class LogViewModel @Inject constructor(
         }
         val mojiCount = state.mojiCount.toLongOrNull()
         if (mojiCount == null || mojiCount <= 0L) {
-            errors["mojiCount"] = "Enter a valid moji count"
+            errors["mojiCount"] = "Enter a valid 文字数"
         }
         val seriesNumber = if (state.isSeries) state.seriesNumber.toIntOrNull() else null
         if (state.isSeries && (seriesNumber == null || seriesNumber <= 0)) {

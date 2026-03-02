@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(
@@ -36,9 +37,9 @@ sealed class Screen(
     data object Settings : Screen(
         route = "settings",
         label = "Settings",
-        selectedIcon = Icons.Filled.Edit,
-        unselectedIcon = Icons.Outlined.Edit,
+        selectedIcon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Filled.Settings,
     )
 }
 
-val bottomNavScreens = listOf(Screen.Dashboard, Screen.Log, Screen.History)
+val bottomNavScreens = listOf(Screen.Dashboard, Screen.Log, Screen.History, Screen.Settings)

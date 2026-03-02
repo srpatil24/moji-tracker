@@ -45,19 +45,45 @@ class DashboardViewModel @Inject constructor(
     getStatisticsUseCase: GetStatisticsUseCase,
     getGoalProgressUseCase: GetGoalProgressUseCase,
 ) : ViewModel() {
-    val uiState: StateFlow<DashboardUiState> = combine(
+    private val summaryStatsFlow = combine(
         getStatisticsUseCase.getTotalMoji(),
         getStatisticsUseCase.getTotalBooks(),
         getStatisticsUseCase.getMediaTypeCounts(),
         getStatisticsUseCase.getMediaTypeMoji(),
         getGoalProgressUseCase(),
+    ) { totalMoji, totalBooks, mediaTypeCounts, mediaTypeMoji, goalProgress ->
+        SummaryStats(
+            totalMoji = totalMoji,
+            totalBooks = totalBooks,
+            mediaTypeCounts = mediaTypeCounts,
+            mediaTypeMoji = mediaTypeMoji,
+            goalProgress = goalProgress,
+        )
+    }
+
+    private val trendStatsFlow = combine(
         getStatisticsUseCase.getAverageMojiPerBook(),
         getStatisticsUseCase.getLatestEntry(),
         getStatisticsUseCase.getReadingStreak(),
         getStatisticsUseCase.getCumulativeMoji(),
         getStatisticsUseCase.getMonthlyCount(),
+    ) { avgMoji, latestEntry, streak, cumulative, monthlyCount ->
+        TrendStats(
+            averageMojiPerBook = avgMoji.toLong(),
+            lastEntryDate = latestEntry?.dateFinished,
+            readingStreakMonths = streak,
+            cumulativeMojiData = cumulative,
+            monthlyCountData = monthlyCount,
+        )
+    }
+
+    val uiState: StateFlow<DashboardUiState> = combine(
+        summaryStatsFlow,
+        trendStatsFlow,
         getStatisticsUseCase.getMonthlyMoji(),
-    ) { totalMoji, totalBooks, mediaTypeCounts, mediaTypeMoji, goalProgress, avgMoji, latestEntry, streak, cumulative, monthlyCount, monthlyMoji ->
+    ) { summaryStats, trendStats, monthlyMoji ->
+        val totalMoji = summaryStats.totalMoji
+        val totalBooks = summaryStats.totalBooks
         val achievedMoji = MilestoneChecker.achievedMojiMilestones(totalMoji)
         val achievedBooks = MilestoneChecker.achievedBookMilestones(totalBooks)
         val achieved = (achievedMoji + achievedBooks).sortedBy { it.threshold }
@@ -66,14 +92,14 @@ class DashboardViewModel @Inject constructor(
         DashboardUiState.Success(
             totalMoji = totalMoji,
             totalBooks = totalBooks,
-            mediaTypeCounts = mediaTypeCounts,
-            mediaTypeMoji = mediaTypeMoji,
-            goalProgress = goalProgress,
-            averageMojiPerBook = avgMoji.toLong(),
-            lastEntryDate = latestEntry?.dateFinished,
-            readingStreakMonths = streak,
-            cumulativeMojiData = cumulative,
-            monthlyCountData = monthlyCount,
+            mediaTypeCounts = summaryStats.mediaTypeCounts,
+            mediaTypeMoji = summaryStats.mediaTypeMoji,
+            goalProgress = summaryStats.goalProgress,
+            averageMojiPerBook = trendStats.averageMojiPerBook,
+            lastEntryDate = trendStats.lastEntryDate,
+            readingStreakMonths = trendStats.readingStreakMonths,
+            cumulativeMojiData = trendStats.cumulativeMojiData,
+            monthlyCountData = trendStats.monthlyCountData,
             monthlyMojiData = monthlyMoji,
             nextMilestone = nextMilestone,
             achievedMilestones = achieved,
@@ -82,5 +108,21 @@ class DashboardViewModel @Inject constructor(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000L),
         initialValue = DashboardUiState.Loading,
+    )
+
+    private data class SummaryStats(
+        val totalMoji: Long,
+        val totalBooks: Int,
+        val mediaTypeCounts: List<MediaTypeCount>,
+        val mediaTypeMoji: List<MediaTypeMoji>,
+        val goalProgress: GoalProgress?,
+    )
+
+    private data class TrendStats(
+        val averageMojiPerBook: Long,
+        val lastEntryDate: LocalDate?,
+        val readingStreakMonths: Int,
+        val cumulativeMojiData: List<CumulativeMoji>,
+        val monthlyCountData: List<MonthlyCount>,
     )
 }

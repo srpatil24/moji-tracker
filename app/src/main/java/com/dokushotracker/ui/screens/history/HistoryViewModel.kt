@@ -10,6 +10,7 @@ import com.dokushotracker.domain.usecase.GetEntriesUseCase
 import com.dokushotracker.domain.usecase.UpdateEntryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,6 +39,7 @@ data class HistorySnackbarEvent(
 )
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class HistoryViewModel @Inject constructor(
     private val getEntriesUseCase: GetEntriesUseCase,
     private val deleteEntryUseCase: DeleteEntryUseCase,

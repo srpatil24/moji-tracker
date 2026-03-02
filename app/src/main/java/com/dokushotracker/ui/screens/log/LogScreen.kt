@@ -1,13 +1,13 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.dokushotracker.ui.screens.log
 
-import android.app.DatePickerDialog
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,18 +16,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,25 +40,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokushotracker.data.model.MediaType
-import com.dokushotracker.ui.components.DokushoTopBar
 import com.dokushotracker.util.DateUtils
 import com.dokushotracker.util.NumberFormatUtils
 import kotlinx.coroutines.flow.collectLatest
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun LogScreen(
-    onOpenSettings: () -> Unit,
     viewModel: LogViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showSeriesSuggestions by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.snackbarEvents.collectLatest { event ->
@@ -68,28 +74,27 @@ fun LogScreen(
     }
 
     Scaffold(
-        topBar = {
-            DokushoTopBar(
-                title = "Log Reading",
-                onOpenSettings = onOpenSettings,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                text = { Text(if (state.isSubmitting) "Saving..." else "Log Entry") },
+                icon = { androidx.compose.material3.Icon(Icons.Filled.Done, contentDescription = null) },
+                onClick = viewModel::submit,
+                expanded = true,
             )
         },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { innerPadding ->
-        val context = LocalContext.current
-        val scrollState = rememberScrollState()
-        var showSeriesSuggestions by remember { mutableStateOf(false) }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .verticalScroll(rememberScrollState())
                 .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(text = "Media Type", style = MaterialTheme.typography.titleSmall)
+            Text(text = "Type", style = MaterialTheme.typography.titleSmall)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -98,7 +103,7 @@ fun LogScreen(
                     FilterChip(
                         selected = state.mediaType == mediaType,
                         onClick = { viewModel.onMediaTypeChanged(mediaType) },
-                        label = { Text("${mediaType.emoji} ${mediaType.name}") },
+                        label = { Text(mediaType.displayName) },
                     )
                 }
             }
@@ -106,29 +111,21 @@ fun LogScreen(
                 Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
             }
 
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(text = "Part of a series", style = MaterialTheme.typography.titleSmall)
-                Switch(
-                    checked = state.isSeries,
-                    onCheckedChange = viewModel::onSeriesToggled,
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = !state.isSeries,
+                    onClick = { viewModel.onSeriesToggled(false) },
+                    label = { Text("Standalone") },
+                )
+                FilterChip(
+                    selected = state.isSeries,
+                    onClick = { viewModel.onSeriesToggled(true) },
+                    label = { Text("Series") },
                 )
             }
 
             OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .let { base ->
-                        if (state.isSeries) {
-                            base.clickable { showSeriesSuggestions = true }
-                        } else {
-                            base
-                        }
-                    },
+                modifier = Modifier.fillMaxWidth(),
                 value = state.title,
                 onValueChange = {
                     viewModel.onTitleChanged(it)
@@ -137,31 +134,23 @@ fun LogScreen(
                 label = { Text(if (state.isSeries) "Series Title" else "Title") },
                 isError = state.validationErrors.containsKey("title"),
                 supportingText = {
-                    if (state.validationErrors.containsKey("title")) {
-                        Text(state.validationErrors["title"].orEmpty())
-                    }
+                    state.validationErrors["title"]?.let { Text(it) }
                 },
             )
 
             if (state.isSeries && showSeriesSuggestions) {
                 val filtered = state.seriesTitles.filter {
                     it.contains(state.title, ignoreCase = true) && state.title.isNotBlank()
-                }.take(6)
-                if (filtered.isNotEmpty()) {
-                    Column(
+                }.take(4)
+                filtered.forEach { seriesTitle ->
+                    TextButton(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        onClick = {
+                            viewModel.onTitleChanged(seriesTitle)
+                            showSeriesSuggestions = false
+                        },
                     ) {
-                        filtered.forEach { seriesTitle ->
-                            TextButton(
-                                onClick = {
-                                    viewModel.onTitleChanged(seriesTitle)
-                                    showSeriesSuggestions = false
-                                },
-                            ) {
-                                Text(seriesTitle)
-                            }
-                        }
+                        Text(seriesTitle)
                     }
                 }
             }
@@ -172,9 +161,7 @@ fun LogScreen(
                     value = state.seriesNumber,
                     onValueChange = viewModel::onSeriesNumberChanged,
                     label = { Text("Volume Number") },
-                    placeholder = {
-                        state.suggestedSeriesNumber?.let { Text(it.toString()) }
-                    },
+                    placeholder = { state.suggestedSeriesNumber?.let { Text(it.toString()) } },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     isError = state.validationErrors.containsKey("seriesNumber"),
                     supportingText = {
@@ -191,7 +178,7 @@ fun LogScreen(
                 modifier = Modifier.fillMaxWidth(),
                 value = state.mojiCount,
                 onValueChange = viewModel::onMojiCountChanged,
-                label = { Text("Moji Count") },
+                label = { Text("文字数") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = state.validationErrors.containsKey("mojiCount"),
                 supportingText = {
@@ -204,31 +191,17 @@ fun LogScreen(
                 },
             )
 
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, dayOfMonth ->
-                                viewModel.onDateFinishedChanged(LocalDate.of(year, month + 1, dayOfMonth))
-                            },
-                            state.dateFinished.year,
-                            state.dateFinished.monthValue - 1,
-                            state.dateFinished.dayOfMonth,
-                        ).apply {
-                            datePicker.maxDate = System.currentTimeMillis()
-                        }.show()
-                    },
-                value = DateUtils.formatDate(state.dateFinished),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Date Finished") },
-                isError = state.validationErrors.containsKey("dateFinished"),
-                supportingText = {
-                    state.validationErrors["dateFinished"]?.let { Text(it) }
-                },
-            )
+            Text(text = "Date Finished", style = MaterialTheme.typography.labelLarge)
+            FilledTonalButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { showDatePicker = true },
+            ) {
+                androidx.compose.material3.Icon(Icons.Filled.DateRange, contentDescription = null)
+                Text(DateUtils.formatDate(state.dateFinished), modifier = Modifier.padding(start = 8.dp))
+            }
+            state.validationErrors["dateFinished"]?.let {
+                Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            }
 
             OutlinedTextField(
                 modifier = Modifier.fillMaxWidth(),
@@ -236,7 +209,7 @@ fun LogScreen(
                 onValueChange = viewModel::onNotesChanged,
                 label = { Text("Notes (optional)") },
                 minLines = 2,
-                maxLines = 4,
+                maxLines = 3,
                 supportingText = { Text("${state.notes.length}/500") },
             )
 
@@ -244,17 +217,40 @@ fun LogScreen(
                 Text(text = it, color = MaterialTheme.colorScheme.error)
             }
 
-            Button(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                enabled = !state.isSubmitting,
-                onClick = viewModel::submit,
-            ) {
-                Text(if (state.isSubmitting) "Saving..." else "Log Entry")
-            }
+            Spacer(modifier = Modifier.height(72.dp))
+        }
+    }
 
-            Spacer(modifier = Modifier.height(8.dp))
+    if (showDatePicker) {
+        val initialMillis = remember(state.dateFinished) {
+            state.dateFinished.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
+        }
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val selected = pickerState.selectedDateMillis
+                        if (selected != null) {
+                            val selectedDate = Instant.ofEpochMilli(selected).atZone(ZoneOffset.UTC).toLocalDate()
+                            if (!selectedDate.isAfter(LocalDate.now())) {
+                                viewModel.onDateFinishedChanged(selectedDate)
+                            }
+                        }
+                        showDatePicker = false
+                    },
+                ) {
+                    Text("Done")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
         }
     }
 

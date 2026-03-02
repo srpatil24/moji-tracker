@@ -1,9 +1,14 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.dokushotracker.ui.screens.history
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -13,13 +18,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -27,6 +34,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,21 +43,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokushotracker.domain.model.ReadingEntry
 import com.dokushotracker.domain.model.SortOption
 import com.dokushotracker.ui.components.ConfirmationDialog
-import com.dokushotracker.ui.components.DokushoTopBar
 import com.dokushotracker.ui.components.EmptyState
 import com.dokushotracker.ui.theme.mediaTypeColor
 import com.dokushotracker.util.DateUtils
 import com.dokushotracker.util.NumberFormatUtils
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun HistoryScreen(
-    onOpenSettings: () -> Unit,
     viewModel: HistoryViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -68,12 +78,7 @@ fun HistoryScreen(
     }
 
     Scaffold(
-        topBar = {
-            DokushoTopBar(
-                title = "History",
-                onOpenSettings = onOpenSettings,
-            )
-        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
@@ -85,29 +90,19 @@ fun HistoryScreen(
             OutlinedTextField(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = 10.dp),
                 value = state.searchQuery,
                 onValueChange = viewModel::onSearchQueryChanged,
                 label = { Text("Search") },
             )
             LazyRow(
-                modifier = Modifier.padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(SortOption.entries) { sort ->
                     AssistChip(
                         onClick = { viewModel.onSortChanged(sort) },
                         label = { Text(sort.displayName) },
-                        leadingIcon = if (state.sortOption == sort) {
-                            {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = null,
-                                )
-                            }
-                        } else {
-                            null
-                        },
                     )
                 }
             }
@@ -121,7 +116,7 @@ fun HistoryScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     items(
                         items = state.entries,
@@ -158,65 +153,71 @@ fun HistoryScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryEntryCard(
     entry: ReadingEntry,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var menuExpanded by remember(entry.id) { mutableStateOf(false) }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { menuExpanded = true },
+            ),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${entry.mediaType.emoji} ${entry.mediaType.name}",
-                    color = mediaTypeColor(entry.mediaType),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Text(
-                    text = DateUtils.formatDate(entry.dateFinished),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = if (entry.isSeries && entry.seriesNumber != null) {
-                    "${entry.title} Vol. ${entry.seriesNumber}"
-                } else {
-                    entry.title
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Text(
-                text = "\uD83D\uDCDD ${NumberFormatUtils.formatLong(entry.mojiCount)} moji",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            if (!entry.notes.isNullOrBlank()) {
-                Text(
-                    text = entry.notes,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                    text = if (entry.isSeries && entry.seriesNumber != null) {
+                        "${entry.title} Vol. ${entry.seriesNumber}"
+                    } else {
+                        entry.title
+                    },
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = "${entry.mediaType.displayName} • ${DateUtils.formatDate(entry.dateFinished)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = mediaTypeColor(entry.mediaType),
                 )
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit")
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
-                }
-            }
+            Text(
+                text = "${NumberFormatUtils.formatLong(entry.mojiCount)}文字",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Edit") },
+                onClick = {
+                    menuExpanded = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = {
+                    menuExpanded = false
+                    onDelete()
+                },
+            )
         }
     }
 }
@@ -230,6 +231,8 @@ private fun EditEntryDialog(
     var title by remember(entry.id) { mutableStateOf(entry.title) }
     var moji by remember(entry.id) { mutableStateOf(entry.mojiCount.toString()) }
     var notes by remember(entry.id) { mutableStateOf(entry.notes.orEmpty()) }
+    var dateFinished by remember(entry.id) { mutableStateOf(entry.dateFinished) }
+    var showDatePicker by remember(entry.id) { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -244,8 +247,15 @@ private fun EditEntryDialog(
                 OutlinedTextField(
                     value = moji,
                     onValueChange = { moji = it.filter(Char::isDigit) },
-                    label = { Text("Moji Count") },
+                    label = { Text("文字数") },
                 )
+                FilledTonalButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { showDatePicker = true },
+                ) {
+                    androidx.compose.material3.Icon(Icons.Filled.DateRange, contentDescription = null)
+                    Text(DateUtils.formatDate(dateFinished), modifier = Modifier.padding(start = 8.dp))
+                }
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it.take(500) },
@@ -262,6 +272,7 @@ private fun EditEntryDialog(
                         entry.copy(
                             title = title.trim(),
                             mojiCount = parsedMoji,
+                            dateFinished = dateFinished,
                             notes = notes.trim().ifBlank { null },
                         ),
                     )
@@ -276,4 +287,36 @@ private fun EditEntryDialog(
             }
         },
     )
+
+    if (showDatePicker) {
+        val initialMillis = remember(dateFinished) {
+            dateFinished.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
+        }
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { millis ->
+                            val pickedDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                            if (!pickedDate.isAfter(LocalDate.now())) {
+                                dateFinished = pickedDate
+                            }
+                        }
+                        showDatePicker = false
+                    },
+                ) {
+                    Text("Done")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 }

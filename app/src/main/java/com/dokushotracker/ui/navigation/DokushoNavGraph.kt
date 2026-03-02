@@ -1,6 +1,7 @@
 package com.dokushotracker.ui.navigation
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -29,6 +30,7 @@ fun DokushoNavGraph(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
                 BottomNavBar(
@@ -47,26 +49,22 @@ fun DokushoNavGraph(
         ) {
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
-                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
                     viewModel = hiltViewModel(),
                 )
             }
             composable(Screen.Log.route) {
                 LogScreen(
-                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
                     viewModel = hiltViewModel(),
                 )
             }
             composable(Screen.History.route) {
                 HistoryScreen(
-                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
                     viewModel = hiltViewModel(),
                 )
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     appSettings = appSettings,
-                    onNavigateBack = { navController.popBackStack() },
                     viewModel = hiltViewModel(),
                 )
             }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,7 +43,6 @@ import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.ThemeMode
 import com.dokushotracker.domain.model.UiLanguage
 import com.dokushotracker.ui.components.ConfirmationDialog
-import com.dokushotracker.ui.components.DokushoTopBar
 import com.dokushotracker.util.NumberFormatUtils
 import kotlinx.coroutines.flow.collectLatest
 import java.time.LocalDate
@@ -50,7 +50,6 @@ import java.time.LocalDate
 @Composable
 fun SettingsScreen(
     appSettings: AppSettings,
-    onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,12 +100,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = {
-            DokushoTopBar(
-                title = "Settings",
-                onNavigateBack = onNavigateBack,
-            )
-        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
@@ -251,7 +245,7 @@ private fun DefaultsSection(
             OutlinedTextField(
                 value = defaultMojiText,
                 onValueChange = { defaultMojiText = it.filter(Char::isDigit) },
-                label = { Text("Default Moji Count") },
+                label = { Text("Default 文字数") },
             )
             Button(
                 onClick = { defaultMojiText.toLongOrNull()?.let(onDefaultMojiChanged) },
