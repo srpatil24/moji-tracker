@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
-            DokushoTheme(themeMode = settings.themeMode) {
+            DokushoTheme(settings = settings) {
                 DokushoNavGraph(
                     modifier = Modifier,
                     appSettings = settings,

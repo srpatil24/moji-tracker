@@ -3,6 +3,7 @@
 package com.dokushotracker.ui.screens.history
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -42,12 +44,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.ReadingEntry
 import com.dokushotracker.domain.model.SortOption
+import com.dokushotracker.domain.model.ThemeMode
 import com.dokushotracker.ui.components.ConfirmationDialog
 import com.dokushotracker.ui.components.EmptyState
 import com.dokushotracker.ui.theme.mediaTypeColor
@@ -61,8 +67,10 @@ import kotlinx.coroutines.flow.collectLatest
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel,
+    appSettings: AppSettings,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val pureBlackMode = isPureBlackActive(appSettings)
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -119,6 +127,7 @@ fun HistoryScreen(
                     ) { entry ->
                         HistoryEntryCard(
                             entry = entry,
+                            pureBlackMode = pureBlackMode,
                             onEdit = { viewModel.onEdit(entry) },
                             onDelete = { viewModel.onRequestDelete(entry) },
                         )
@@ -203,6 +212,7 @@ private fun SortButtonsRow(
 @Composable
 private fun HistoryEntryCard(
     entry: ReadingEntry,
+    pureBlackMode: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -214,6 +224,11 @@ private fun HistoryEntryCard(
                 onClick = {},
                 onLongClick = { menuExpanded = true },
             ),
+        colors = if (pureBlackMode) {
+            CardDefaults.cardColors(containerColor = Color.Black)
+        } else {
+            CardDefaults.cardColors()
+        },
     ) {
         Row(
             modifier = Modifier
@@ -221,29 +236,47 @@ private fun HistoryEntryCard(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = if (entry.isSeries && entry.seriesNumber != null) {
-                        "${entry.title} Vol. ${entry.seriesNumber}"
-                    } else {
-                        entry.title
-                    },
+                    text = entry.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                 )
-                Text(
-                    text = "${entry.mediaType.displayName} • ${DateUtils.formatDate(entry.dateFinished)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = mediaTypeColor(entry.mediaType),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = entry.mediaType.displayName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = mediaTypeColor(entry.mediaType),
+                    )
+                    Text(
+                        text = "${NumberFormatUtils.formatLong(entry.mojiCount)}文字",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
-            Text(
-                text = "${NumberFormatUtils.formatLong(entry.mojiCount)}文字",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+            Column(
+                horizontalAlignment = androidx.compose.ui.Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(start = 10.dp),
+            ) {
+                Text(
+                    text = DateUtils.formatDate(entry.dateFinished),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                if (entry.isSeries && entry.seriesNumber != null) {
+                    Text(
+                        text = "Vol. ${entry.seriesNumber}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
 
         DropdownMenu(
@@ -365,6 +398,17 @@ private fun EditEntryDialog(
             DatePicker(state = pickerState)
         }
     }
+}
+
+@Composable
+private fun isPureBlackActive(appSettings: AppSettings): Boolean {
+    val systemDark = isSystemInDarkTheme()
+    val darkModeActive = when (appSettings.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> systemDark
+    }
+    return darkModeActive && appSettings.pureBlackDarkMode
 }
 
 private enum class SortGroup(val label: String) {

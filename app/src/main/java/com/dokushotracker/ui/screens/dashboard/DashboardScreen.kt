@@ -1,6 +1,16 @@
 package com.dokushotracker.ui.screens.dashboard
 
+import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,17 +26,23 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CardColors
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -41,12 +57,15 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokushotracker.data.model.CumulativeMoji
 import com.dokushotracker.data.model.MediaType
+import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.MilestoneType
+import com.dokushotracker.domain.model.ThemeMode
 import com.dokushotracker.ui.components.AnimatedCounter
 import com.dokushotracker.ui.components.EmptyState
 import com.dokushotracker.ui.theme.mediaTypeColor
@@ -57,12 +76,21 @@ import java.time.YearMonth
 import java.time.format.TextStyle as DateTextStyle
 import java.time.temporal.WeekFields
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
+    appSettings: AppSettings,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val pendingCelebration by viewModel.pendingCelebration.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val pureBlackMode = isPureBlackActive(appSettings = appSettings)
     when (val uiState = state) {
         DashboardUiState.Loading -> Box(
             modifier = Modifier.fillMaxSize(),
@@ -76,26 +104,51 @@ fun DashboardScreen(
                     subtitle = "Log your first book to get started.",
                 )
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item {
-                        TotalMojiCard(
-                            totalMoji = uiState.totalMoji,
-                            totalBooks = uiState.totalBooks,
+                var celebrationVisible by rememberSaveable { mutableStateOf(false) }
+
+                LaunchedEffect(pendingCelebration?.goalCreatedAtMillis) {
+                    pendingCelebration?.let { pending ->
+                        celebrationVisible = true
+                        viewModel.markCelebrationShown(pending.goalCreatedAtMillis)
+                    }
+                }
+
+                LaunchedEffect(celebrationVisible) {
+                    if (celebrationVisible) {
+                        performGoalCelebrationFeedback(context)
+                    }
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp)
+                            .alpha(if (celebrationVisible) 0.08f else 1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        item {
+                            TotalMojiCard(
+                                totalMoji = uiState.totalMoji,
+                                totalBooks = uiState.totalBooks,
+                            )
+                        }
+                        item { GoalProgressCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { QuickStatsCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { MediaTypeBreakdownCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { LineChartCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { MonthlyCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { MilestoneCard(uiState = uiState, pureBlackMode = pureBlackMode) }
+                        item { Spacer(modifier = Modifier.height(90.dp)) }
+                    }
+
+                    if (celebrationVisible) {
+                        GoalCelebrationOverlay(
+                            uiState = uiState,
+                            onDismiss = { celebrationVisible = false },
                         )
                     }
-                    item { MediaTypeBreakdownCard(uiState = uiState) }
-                    item { GoalProgressCard(uiState = uiState) }
-                    item { QuickStatsCard(uiState = uiState) }
-                    item { LineChartCard(uiState = uiState) }
-                    item { MonthlyCard(uiState = uiState) }
-                    item { MilestoneCard(uiState = uiState) }
-                    item { Spacer(modifier = Modifier.height(90.dp)) }
                 }
             }
         }
@@ -156,12 +209,23 @@ private fun TotalMojiCard(
 }
 
 @Composable
-private fun MediaTypeBreakdownCard(uiState: DashboardUiState.Success) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+@OptIn(ExperimentalLayoutApi::class)
+private fun MediaTypeBreakdownCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
+    val countsByType = MediaType.entries.associateWith { mediaType ->
+        uiState.mediaTypeCounts.firstOrNull { it.mediaType == mediaType }?.count ?: 0
+    }
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Media Breakdown", style = MaterialTheme.typography.titleMedium)
             MediaType.entries.forEach { mediaType ->
-                val count = uiState.mediaTypeCounts.firstOrNull { it.mediaType == mediaType }?.count ?: 0
+                val count = countsByType[mediaType] ?: 0
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(mediaType.displayName)
                     Text(
@@ -171,13 +235,27 @@ private fun MediaTypeBreakdownCard(uiState: DashboardUiState.Success) {
                     )
                 }
             }
+            Spacer(Modifier.height(4.dp))
+            SpiderMediaChart(
+                countsByType = countsByType,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun GoalProgressCard(uiState: DashboardUiState.Success) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun GoalProgressCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val goalProgress = uiState.goalProgress
             if (goalProgress == null) {
@@ -193,6 +271,8 @@ private fun GoalProgressCard(uiState: DashboardUiState.Success) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(10.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
                 )
                 Text(
                     "${(goalProgress.progress * 100f).toInt()}% • ${NumberFormatUtils.formatLong(goalProgress.currentValue)} / ${
@@ -208,8 +288,15 @@ private fun GoalProgressCard(uiState: DashboardUiState.Success) {
 }
 
 @Composable
-private fun QuickStatsCard(uiState: DashboardUiState.Success) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun QuickStatsCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Highlights", style = MaterialTheme.typography.titleMedium)
             Text("Average 文字 / Book: ${NumberFormatUtils.formatLong(uiState.averageMojiPerBook)}")
@@ -225,13 +312,20 @@ private fun QuickStatsCard(uiState: DashboardUiState.Success) {
 }
 
 @Composable
-private fun LineChartCard(uiState: DashboardUiState.Success) {
+private fun LineChartCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
     var range by remember { mutableStateOf(CumulativeRange.ALL) }
     val filteredData = remember(uiState.cumulativeMojiData, range) {
         filterCumulativeRange(uiState.cumulativeMojiData, range)
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Cumulative 文字 Read", style = MaterialTheme.typography.titleMedium)
             RangeSelector(
@@ -260,13 +354,20 @@ private fun LineChartCard(uiState: DashboardUiState.Success) {
 }
 
 @Composable
-private fun MonthlyCard(uiState: DashboardUiState.Success) {
+private fun MonthlyCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
     var range by remember { mutableStateOf(ActivityRange.MONTHS) }
     val activityPoints = remember(uiState.cumulativeMojiData, range) {
         buildActivityPoints(uiState.cumulativeMojiData, range)
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Reading Activity", style = MaterialTheme.typography.titleMedium)
             RangeSelector(
@@ -295,8 +396,15 @@ private fun MonthlyCard(uiState: DashboardUiState.Success) {
 }
 
 @Composable
-private fun MilestoneCard(uiState: DashboardUiState.Success) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun MilestoneCard(
+    uiState: DashboardUiState.Success,
+    pureBlackMode: Boolean,
+) {
+    Card(
+        modifier = dashboardCardModifier(pureBlackMode),
+        colors = dashboardCardColors(pureBlackMode),
+        border = dashboardCardBorder(pureBlackMode),
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Milestones", style = MaterialTheme.typography.titleMedium)
             uiState.achievedMilestones.takeLast(3).forEach {
@@ -310,6 +418,132 @@ private fun MilestoneCard(uiState: DashboardUiState.Success) {
                 val unitLabel = if (next.type == MilestoneType.MOJI) "文字" else "books"
                 Text("Next: ${next.label} in ${NumberFormatUtils.formatLong(remaining)} $unitLabel")
             }
+        }
+    }
+}
+
+@Composable
+private fun GoalCelebrationOverlay(
+    uiState: DashboardUiState.Success,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Filled.Celebration,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Goal Complete!",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
+                    text = "You reached ${NumberFormatUtils.formatLong(uiState.goalProgress?.targetValue ?: 0L)}.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Amazing consistency. Keep going!",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                FilledTonalButton(onClick = onDismiss) {
+                    Text("Continue")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpiderMediaChart(
+    countsByType: Map<MediaType, Int>,
+    modifier: Modifier = Modifier,
+) {
+    val mediaTypes = MediaType.entries
+    val values = mediaTypes.map { (countsByType[it] ?: 0).toFloat() }
+    val maxValue = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+    val outlineColor = MaterialTheme.colorScheme.outline
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Canvas(modifier = modifier) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val radius = min(size.width, size.height) * 0.34f
+            val axisCount = mediaTypes.size
+            val webLevels = 4
+
+            repeat(webLevels) { level ->
+                val levelPath = Path()
+                val levelRadius = radius * ((level + 1).toFloat() / webLevels)
+                repeat(axisCount) { index ->
+                    val angle = (-PI / 2.0) + (2.0 * PI * index / axisCount.toDouble())
+                    val point = Offset(
+                        x = center.x + (cos(angle) * levelRadius).toFloat(),
+                        y = center.y + (sin(angle) * levelRadius).toFloat(),
+                    )
+                    if (index == 0) levelPath.moveTo(point.x, point.y) else levelPath.lineTo(point.x, point.y)
+                }
+                levelPath.close()
+                drawPath(
+                    path = levelPath,
+                    color = outlineColor.copy(alpha = 0.25f),
+                    style = Stroke(width = 1f),
+                )
+            }
+
+            repeat(axisCount) { index ->
+                val angle = (-PI / 2.0) + (2.0 * PI * index / axisCount.toDouble())
+                val point = Offset(
+                    x = center.x + (cos(angle) * radius).toFloat(),
+                    y = center.y + (sin(angle) * radius).toFloat(),
+                )
+                drawLine(
+                    color = outlineColor.copy(alpha = 0.35f),
+                    start = center,
+                    end = point,
+                    strokeWidth = 1f,
+                )
+            }
+
+            val dataPath = Path()
+            values.forEachIndexed { index, value ->
+                val ratio = value / maxValue
+                val pointRadius = radius * ratio
+                val angle = (-PI / 2.0) + (2.0 * PI * index / axisCount.toDouble())
+                val point = Offset(
+                    x = center.x + (cos(angle) * pointRadius).toFloat(),
+                    y = center.y + (sin(angle) * pointRadius).toFloat(),
+                )
+                if (index == 0) dataPath.moveTo(point.x, point.y) else dataPath.lineTo(point.x, point.y)
+            }
+            dataPath.close()
+            drawPath(
+                path = dataPath,
+                color = primaryColor.copy(alpha = 0.22f),
+            )
+            drawPath(
+                path = dataPath,
+                color = primaryColor,
+                style = Stroke(width = 3f),
+            )
         }
     }
 }
@@ -378,6 +612,70 @@ private fun AreaLineChart(
             color = lineColor,
             style = Stroke(width = 4f, cap = StrokeCap.Round),
         )
+    }
+}
+
+@Composable
+private fun isPureBlackActive(appSettings: AppSettings): Boolean {
+    val systemDark = isSystemInDarkTheme()
+    val darkModeActive = when (appSettings.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> systemDark
+    }
+    return darkModeActive && appSettings.pureBlackDarkMode
+}
+
+private fun dashboardCardModifier(pureBlackMode: Boolean): Modifier {
+    return Modifier.fillMaxWidth()
+}
+
+@Composable
+private fun dashboardCardColors(pureBlackMode: Boolean): CardColors {
+    return if (pureBlackMode) {
+        CardDefaults.cardColors(containerColor = Color.Black)
+    } else {
+        CardDefaults.cardColors()
+    }
+}
+
+@Composable
+private fun dashboardCardBorder(pureBlackMode: Boolean): BorderStroke? {
+    return if (pureBlackMode) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    } else {
+        null
+    }
+}
+
+private suspend fun performGoalCelebrationFeedback(context: Context) {
+    vibrateCelebration(context)
+    val toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 95)
+    val tones = listOf(
+        ToneGenerator.TONE_CDMA_PIP,
+        ToneGenerator.TONE_PROP_BEEP,
+        ToneGenerator.TONE_PROP_BEEP2,
+    )
+    tones.forEach { tone ->
+        toneGenerator.startTone(tone, 150)
+        delay(140L)
+    }
+    toneGenerator.release()
+}
+
+private fun vibrateCelebration(context: Context) {
+    val heartbeat = VibrationEffect.createWaveform(
+        longArrayOf(0L, 30L, 80L, 35L, 120L, 42L, 160L, 48L),
+        -1,
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val manager = context.getSystemService(VibratorManager::class.java)
+        manager?.defaultVibrator?.vibrate(heartbeat)
+    } else {
+        @Suppress("DEPRECATION")
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        @Suppress("DEPRECATION")
+        vibrator?.vibrate(heartbeat)
     }
 }
 

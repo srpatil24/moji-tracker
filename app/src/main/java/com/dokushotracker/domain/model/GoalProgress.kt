@@ -6,4 +6,5 @@ data class GoalProgress(
     val targetValue: Long,
     val progress: Float,
     val daysRemaining: Long?,
+    val isEligibleForCelebration: Boolean,
 )

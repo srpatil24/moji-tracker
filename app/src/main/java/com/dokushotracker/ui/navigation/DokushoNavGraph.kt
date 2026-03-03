@@ -50,6 +50,7 @@ fun DokushoNavGraph(
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
                     viewModel = hiltViewModel(),
+                    appSettings = appSettings,
                 )
             }
             composable(Screen.Log.route) {
@@ -60,11 +61,11 @@ fun DokushoNavGraph(
             composable(Screen.History.route) {
                 HistoryScreen(
                     viewModel = hiltViewModel(),
+                    appSettings = appSettings,
                 )
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(
-                    appSettings = appSettings,
                     viewModel = hiltViewModel(),
                 )
             }

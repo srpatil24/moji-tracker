@@ -6,10 +6,10 @@ import com.dokushotracker.BuildConfig
 import com.dokushotracker.data.model.GoalType
 import com.dokushotracker.data.model.MediaType
 import com.dokushotracker.data.repository.GoalRepository
+import com.dokushotracker.domain.model.AccentColorOption
 import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.ReadingGoal
 import com.dokushotracker.domain.model.ThemeMode
-import com.dokushotracker.domain.model.UiLanguage
 import com.dokushotracker.domain.usecase.ExportImportUseCase
 import com.dokushotracker.domain.usecase.ObserveSettingsUseCase
 import com.dokushotracker.domain.usecase.SetGoalUseCase
@@ -73,9 +73,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setLanguage(language: UiLanguage) {
+    fun setAccentColor(accentColor: AccentColorOption) {
         viewModelScope.launch {
-            updateSettingsUseCase.setLanguage(language)
+            updateSettingsUseCase.setAccentColor(accentColor)
+        }
+    }
+
+    fun setPureBlackDarkMode(enabled: Boolean) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setPureBlackDarkMode(enabled)
         }
     }
 

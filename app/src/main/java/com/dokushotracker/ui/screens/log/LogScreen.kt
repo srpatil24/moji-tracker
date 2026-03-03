@@ -2,6 +2,12 @@
 
 package com.dokushotracker.ui.screens.log
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -46,6 +52,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,16 +74,37 @@ fun LogScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showDatePicker by remember { mutableStateOf(false) }
     var seriesMenuExpanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val successPop = remember { Animatable(0f) }
+    val fabScale by animateFloatAsState(
+        targetValue = if (pressed) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 600f),
+        label = "log_fab_scale",
+    )
+    val combinedScale = fabScale + (successPop.value * 0.09f)
+    val fabContainerColor = lerp(
+        start = MaterialTheme.colorScheme.primaryContainer,
+        stop = MaterialTheme.colorScheme.primary,
+        fraction = successPop.value * 0.33f,
+    )
 
     LaunchedEffect(Unit) {
         viewModel.snackbarEvents.collectLatest { event ->
-            val result = snackbarHostState.showSnackbar(
-                message = event.message,
-                actionLabel = event.actionLabel,
-            )
-            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed && event.undoEntry != null) {
-                viewModel.undoInsert(event.undoEntry)
+            if (event.isCelebratory) {
+                successPop.snapTo(0f)
+                successPop.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 120),
+                )
+                successPop.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(dampingRatio = 0.58f, stiffness = 520f),
+                )
             }
+            snackbarHostState.showSnackbar(
+                message = event.message,
+            )
         }
     }
 
@@ -84,8 +113,11 @@ fun LogScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
+                modifier = Modifier.graphicsLayer(scaleX = combinedScale, scaleY = combinedScale),
                 text = { Text(if (state.isSubmitting) "Saving..." else "Log Entry") },
                 icon = { androidx.compose.material3.Icon(Icons.Filled.Done, contentDescription = null) },
+                interactionSource = interactionSource,
+                containerColor = fabContainerColor,
                 onClick = viewModel::submit,
                 expanded = true,
             )
@@ -118,7 +150,6 @@ fun LogScreen(
                 Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
             }
 
-            Text(text = "Entry Kind", style = MaterialTheme.typography.titleSmall)
             TabRow(selectedTabIndex = if (state.isSeries) 1 else 0) {
                 Tab(
                     selected = !state.isSeries,

@@ -5,12 +5,12 @@ import com.dokushotracker.data.model.MediaType
 import com.dokushotracker.data.repository.GoalRepository
 import com.dokushotracker.data.repository.ReadingRepository
 import com.dokushotracker.data.repository.SettingsRepository
+import com.dokushotracker.domain.model.AccentColorOption
 import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.ReadingEntry
 import com.dokushotracker.domain.model.ReadingGoal
 import com.dokushotracker.domain.model.SortOption
 import com.dokushotracker.domain.model.ThemeMode
-import com.dokushotracker.domain.model.UiLanguage
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -57,7 +57,10 @@ data class ExportSettings(
     val defaultMojiCount: Long,
     val theme: String,
     val defaultMediaType: String? = null,
-    val language: String,
+    val accentColor: String = AccentColorOption.SAGE.name,
+    val pureBlackDarkMode: Boolean = false,
+    val lastCelebratedGoalCreatedAtMillis: Long? = null,
+    val language: String? = null,
 )
 
 @Serializable
@@ -127,7 +130,9 @@ class DataExporter @Inject constructor(
             settingsRepository.setDefaultMojiCount(importedSettings.defaultMojiCount)
             settingsRepository.setThemeMode(importedSettings.themeMode)
             settingsRepository.setDefaultMediaType(importedSettings.defaultMediaType)
-            settingsRepository.setLanguage(importedSettings.language)
+            settingsRepository.setAccentColor(importedSettings.accentColor)
+            settingsRepository.setPureBlackDarkMode(importedSettings.pureBlackDarkMode)
+            settingsRepository.setLastCelebratedGoalCreatedAtMillis(importedSettings.lastCelebratedGoalCreatedAtMillis)
         }
 
         return ImportResult(importedCount = importedCount, skippedCount = skippedCount)
@@ -188,7 +193,9 @@ class DataExporter @Inject constructor(
         defaultMojiCount = defaultMojiCount,
         theme = themeMode.name,
         defaultMediaType = defaultMediaType?.name,
-        language = language.name,
+        accentColor = accentColor.name,
+        pureBlackDarkMode = pureBlackDarkMode,
+        lastCelebratedGoalCreatedAtMillis = lastCelebratedGoalCreatedAtMillis,
     )
 
     private fun ExportSettings.toAppSettings(): AppSettings? {
@@ -196,7 +203,9 @@ class DataExporter @Inject constructor(
             defaultMojiCount = defaultMojiCount,
             themeMode = runCatching { ThemeMode.valueOf(theme) }.getOrDefault(ThemeMode.SYSTEM),
             defaultMediaType = defaultMediaType?.let { runCatching { MediaType.valueOf(it) }.getOrNull() },
-            language = runCatching { UiLanguage.valueOf(language) }.getOrDefault(UiLanguage.ENGLISH),
+            accentColor = runCatching { AccentColorOption.valueOf(accentColor) }.getOrDefault(AccentColorOption.SAGE),
+            pureBlackDarkMode = pureBlackDarkMode,
+            lastCelebratedGoalCreatedAtMillis = lastCelebratedGoalCreatedAtMillis,
         )
     }
 }

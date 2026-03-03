@@ -7,9 +7,9 @@ import com.dokushotracker.domain.model.ReadingEntry
 import com.dokushotracker.domain.usecase.AddEntryResult
 import com.dokushotracker.domain.usecase.AddEntryUseCase
 import com.dokushotracker.domain.usecase.CheckDuplicateUseCase
-import com.dokushotracker.domain.usecase.DeleteEntryUseCase
 import com.dokushotracker.domain.usecase.GetSeriesSuggestionsUseCase
 import com.dokushotracker.domain.usecase.ObserveSettingsUseCase
+import com.dokushotracker.util.NumberFormatUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -43,14 +43,12 @@ data class LogUiState(
 
 data class LogSnackbarEvent(
     val message: String,
-    val actionLabel: String? = null,
-    val undoEntry: ReadingEntry? = null,
+    val isCelebratory: Boolean = false,
 )
 
 @HiltViewModel
 class LogViewModel @Inject constructor(
     private val addEntryUseCase: AddEntryUseCase,
-    private val deleteEntryUseCase: DeleteEntryUseCase,
     private val checkDuplicateUseCase: CheckDuplicateUseCase,
     private val getSeriesSuggestionsUseCase: GetSeriesSuggestionsUseCase,
     observeSettingsUseCase: ObserveSettingsUseCase,
@@ -184,23 +182,15 @@ class LogViewModel @Inject constructor(
         }
     }
 
-    fun undoInsert(entry: ReadingEntry) {
-        viewModelScope.launch {
-            deleteEntryUseCase(entry)
-        }
-    }
-
     private fun submitEntry(entry: ReadingEntry, allowDuplicate: Boolean) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, validationErrors = emptyMap()) }
             when (val result = addEntryUseCase(entry, allowDuplicate)) {
                 is AddEntryResult.Success -> {
-                    val inserted = entry.copy(id = result.id)
                     _snackbarEvents.emit(
                         LogSnackbarEvent(
-                            message = "Entry logged successfully",
-                            actionLabel = "Undo",
-                            undoEntry = inserted,
+                            message = "Great work! +${NumberFormatUtils.formatLong(entry.mojiCount)}文字 logged.",
+                            isCelebratory = true,
                         ),
                     )
                     resetForm()

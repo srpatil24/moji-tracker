@@ -3,15 +3,16 @@ package com.dokushotracker.data.repository
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.dokushotracker.data.model.MediaType
+import com.dokushotracker.domain.model.AccentColorOption
 import com.dokushotracker.domain.model.AppSettings
 import com.dokushotracker.domain.model.ThemeMode
-import com.dokushotracker.domain.model.UiLanguage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -40,7 +41,9 @@ class SettingsRepositoryImpl @Inject constructor(
                     defaultMojiCount = preferences[Keys.DEFAULT_MOJI_COUNT] ?: 100_000L,
                     themeMode = preferences[Keys.THEME_MODE]?.let { safeEnumValueOf<ThemeMode>(it) } ?: ThemeMode.SYSTEM,
                     defaultMediaType = preferences[Keys.DEFAULT_MEDIA_TYPE]?.let { safeEnumValueOf<MediaType>(it) },
-                    language = preferences[Keys.LANGUAGE]?.let { safeEnumValueOf<UiLanguage>(it) } ?: UiLanguage.ENGLISH,
+                    accentColor = preferences[Keys.ACCENT_COLOR]?.let { safeEnumValueOf<AccentColorOption>(it) } ?: AccentColorOption.SAGE,
+                    pureBlackDarkMode = preferences[Keys.PURE_BLACK_DARK_MODE] ?: false,
+                    lastCelebratedGoalCreatedAtMillis = preferences[Keys.LAST_CELEBRATED_GOAL_CREATED_AT],
                 )
             }
     }
@@ -57,9 +60,25 @@ class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun setLanguage(language: UiLanguage) {
+    override suspend fun setAccentColor(accentColor: AccentColorOption) {
         dataStore.edit { preferences ->
-            preferences[Keys.LANGUAGE] = language.name
+            preferences[Keys.ACCENT_COLOR] = accentColor.name
+        }
+    }
+
+    override suspend fun setPureBlackDarkMode(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[Keys.PURE_BLACK_DARK_MODE] = enabled
+        }
+    }
+
+    override suspend fun setLastCelebratedGoalCreatedAtMillis(epochMillis: Long?) {
+        dataStore.edit { preferences ->
+            if (epochMillis == null) {
+                preferences.remove(Keys.LAST_CELEBRATED_GOAL_CREATED_AT)
+            } else {
+                preferences[Keys.LAST_CELEBRATED_GOAL_CREATED_AT] = epochMillis
+            }
         }
     }
 
@@ -80,7 +99,9 @@ class SettingsRepositoryImpl @Inject constructor(
     private object Keys {
         val DEFAULT_MOJI_COUNT = longPreferencesKey("default_moji_count")
         val THEME_MODE = stringPreferencesKey("theme_mode")
-        val LANGUAGE = stringPreferencesKey("language")
+        val ACCENT_COLOR = stringPreferencesKey("accent_color")
+        val PURE_BLACK_DARK_MODE = booleanPreferencesKey("pure_black_dark_mode")
+        val LAST_CELEBRATED_GOAL_CREATED_AT = longPreferencesKey("last_celebrated_goal_created_at")
         val DEFAULT_MEDIA_TYPE = stringPreferencesKey("default_media_type")
     }
 }

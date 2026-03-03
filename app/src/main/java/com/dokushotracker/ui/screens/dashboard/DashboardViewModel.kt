@@ -11,14 +11,19 @@ import com.dokushotracker.domain.model.GoalProgress
 import com.dokushotracker.domain.model.Milestone
 import com.dokushotracker.domain.usecase.GetGoalProgressUseCase
 import com.dokushotracker.domain.usecase.GetStatisticsUseCase
+import com.dokushotracker.domain.usecase.ObserveSettingsUseCase
+import com.dokushotracker.domain.usecase.UpdateSettingsUseCase
 import com.dokushotracker.util.MilestoneChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 sealed interface DashboardUiState {
     data object Loading : DashboardUiState
@@ -44,7 +49,47 @@ sealed interface DashboardUiState {
 class DashboardViewModel @Inject constructor(
     getStatisticsUseCase: GetStatisticsUseCase,
     getGoalProgressUseCase: GetGoalProgressUseCase,
+    observeSettingsUseCase: ObserveSettingsUseCase,
+    private val updateSettingsUseCase: UpdateSettingsUseCase,
 ) : ViewModel() {
+    private val _pendingCelebration = MutableStateFlow<PendingGoalCelebration?>(null)
+    val pendingCelebration: StateFlow<PendingGoalCelebration?> = _pendingCelebration.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            combine(
+                getGoalProgressUseCase(),
+                observeSettingsUseCase(),
+            ) { goalProgress, appSettings ->
+                goalProgress to appSettings.lastCelebratedGoalCreatedAtMillis
+            }.collect { (goalProgress, lastCelebratedGoalCreatedAtMillis) ->
+                val goal = goalProgress?.goal
+                val goalId = goal?.id
+                val goalCreatedAtMillis = goalProgress?.goal?.createdAt?.toEpochMilli()
+                val shouldCelebrate = goalProgress != null &&
+                    goalId != null &&
+                    goalCreatedAtMillis != null &&
+                    goalProgress.isEligibleForCelebration &&
+                    goalCreatedAtMillis != lastCelebratedGoalCreatedAtMillis
+                if (shouldCelebrate) {
+                    _pendingCelebration.value = PendingGoalCelebration(
+                        goalId = goalId,
+                        goalCreatedAtMillis = goalCreatedAtMillis,
+                    )
+                } else if (goal == null || goalCreatedAtMillis == lastCelebratedGoalCreatedAtMillis) {
+                    _pendingCelebration.value = null
+                }
+            }
+        }
+    }
+
+    fun markCelebrationShown(goalCreatedAtMillis: Long) {
+        viewModelScope.launch {
+            updateSettingsUseCase.setLastCelebratedGoalCreatedAtMillis(goalCreatedAtMillis)
+            _pendingCelebration.value = null
+        }
+    }
+
     private val summaryStatsFlow = combine(
         getStatisticsUseCase.getTotalMoji(),
         getStatisticsUseCase.getTotalBooks(),
@@ -126,3 +171,8 @@ class DashboardViewModel @Inject constructor(
         val monthlyCountData: List<MonthlyCount>,
     )
 }
+
+data class PendingGoalCelebration(
+    val goalId: Long,
+    val goalCreatedAtMillis: Long,
+)
